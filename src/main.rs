@@ -4,6 +4,8 @@ use std::process::Command;
 use actix_web::{get, http, App, HttpResponse, HttpServer, Responder};
 use actix_cors::Cors;
 use serde::Serialize;
+use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +20,21 @@ struct LastCommit {
     hash: String,
     date: String,
     msg: String,
+}
+
+fn parse_date_to_string(date: String) ->String {
+    let x = DateTime::parse_from_str(&date, 
+        "%a %b %e %H:%M:%S %Y %z"
+    ).expect("Failed to parse datetime");
+    let y: DateTime<FixedOffset> = DateTime::from(x);
+
+    y.format("%m/%d/%Y %H:%M").to_string()
+}
+
+fn parse_string_to_date(date: &str) ->DateTime<Utc> {
+    let format = "%m/%d/%Y %H:%M";
+
+    Utc.datetime_from_str(date, format).unwrap()
 }
 
 fn get_last_commit() -> LastCommit {
@@ -37,30 +54,29 @@ fn get_last_commit() -> LastCommit {
         .split_whitespace()
         .nth(1)
         .expect("Failed to extract commit hash")
-        .to_string();
+        .chars()
+        .take(6)
+        .collect::<String>();
 
     let (date, msg) = if last_commit_strings[2].contains("Date:") {
-        (last_commit_strings[2]
+        (parse_date_to_string(last_commit_strings[2]
             .trim_start_matches("Date:")
             .trim()
-            .to_string(),
+            .to_string()),
         last_commit_strings[4]
             .trim_start()
             .to_string()
         )
     } else {
-        (last_commit_strings[3]
+        (parse_date_to_string(last_commit_strings[3]
             .trim_start_matches("Date:")
             .trim()
-            .to_string(),
-
+            .to_string()),
          last_commit_strings[5]
             .trim_start()
             .to_string()
         )
     };
-
-
 
     LastCommit {
         hash,
@@ -101,6 +117,11 @@ async fn get_repositories() -> impl Responder {
     } else {
         eprintln!("Failed to read directory");
     }
+
+    repos.sort_by_key(
+        |a| parse_string_to_date(&a.last_commit.date)
+    );
+    repos.reverse();
 
     let json = serde_json::to_string(&repos).expect("Failed to serialize JSON");
     HttpResponse::Ok().body(json)
