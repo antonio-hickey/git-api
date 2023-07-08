@@ -1,20 +1,38 @@
 use std::fs;
 use std::env;
 use std::process::{Command, Stdio};
+use std::path::PathBuf;
 
-use actix_web::{web, get,  HttpResponse, Responder};
+use actix_web::{web::{Data, ReqData}, get,  HttpResponse, Responder};
 use serde::Serialize;
 
-use crate::structs::LastCommit;
-use crate::structs::RepoData;
+use crate::structs::{LastCommit, RepoData, AppState, TokenClaims};
 use crate::utils::{
     commits::get_last_commit,
     dates::parse_string_to_date,
 };
 
 
+struct RepoConfig {
+    public: bool
+}
+
+fn is_private(entry_path: PathBuf) -> bool {
+    match fs::read_to_string(entry_path) {
+        Ok(content) => {
+            println!("content: {:?}", content);
+            true
+        }
+        Err(e) => {
+            println!("Error: {:?}", e);
+            false
+        }
+    }
+}
+
+
 #[get("/")]
-async fn get_repositories() -> impl Responder {
+pub async fn get_repositories(state: Data<AppState>, req_user: Option<ReqData<TokenClaims>>) -> impl Responder {
     /* Get all repos on server */
     let repos_path = "/home/git/srv/git/";
     let _ = env::set_current_dir(&repos_path);
@@ -25,6 +43,10 @@ async fn get_repositories() -> impl Responder {
         for entry in entries.filter_map(Result::ok) {
             env::set_current_dir(entry.path()).unwrap();
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                // todo: stuff lol
+                let is_private = is_private(entry.path().join("config"));
+                println!("is_private: {:?}", is_private);
+
                 let name = entry.path()
                     .display()
                     .to_string()

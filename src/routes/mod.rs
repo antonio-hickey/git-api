@@ -1,4 +1,4 @@
+pub mod auth;
 pub mod config;
-pub mod repo;
 pub mod object;
-
+pub mod repo;
