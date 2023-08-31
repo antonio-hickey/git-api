@@ -7,7 +7,9 @@ use serde::{Serialize, Deserialize};
 
 pub struct AppState {
     pub users: Users,
-    max_payload: i64,
+    pub max_payload: i64,
+    pub object_hash_cache: HashMap<String, ObjectContent>,
+    pub repo_hash_cache: HashMap<String, Vec<RepoBranchFile>>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -70,11 +72,6 @@ impl Default for Users {
 }
 impl Users {}
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TokenClaims {
-    id: Uuid,
-}
-
 #[derive(Serialize, Debug)]
 pub struct LastCommit {
     pub hash: String,
@@ -97,4 +94,12 @@ pub struct RepoData {
     pub name: String,
     pub description: String,
     pub last_commit: LastCommit,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ObjectContent {
+    pub name: String,
+    pub content: String,
+    pub size: String,
+    pub ext: String,
 }
