@@ -93,10 +93,10 @@ pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Respond
         // Checks if the objects name is README.md
         // and if so updates `read_me` to a string
         // of the README's content.
-        println!("{name}");
         if name == "README.md" {
+            let branch_filename = format!("{}:README.md", &branch);
             let content = String::from_utf8(
-                Command::new("cat").args(["README.md"]).output().unwrap().stdout
+                Command::new("git").args(["show", &branch_filename]).output().unwrap().stdout
             ).unwrap();
             read_me = Some(content)
         };
