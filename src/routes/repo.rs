@@ -171,7 +171,10 @@ pub async fn get_repository_hash(state: Data<AppState>, path: Path<(String, Stri
             }
         }).collect::<Vec<RepoBranchFile>>();
 
-        let json = serde_json::to_string(&output).expect("Failed to serialize JSON");
+        let json = serde_json::to_string(&Repo {
+            objects: output,
+            read_me: None,
+        }).expect("Failed to serialize JSON");
         HttpResponse::Ok().body(json)
     }
 }
