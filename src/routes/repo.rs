@@ -57,7 +57,7 @@ pub async fn get_repositories() -> impl Responder {
     HttpResponse::Ok().body(json)
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RepoBranchFile {
     name: String,
@@ -66,19 +66,42 @@ struct RepoBranchFile {
     last_commit: LastCommit,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Repo {
+    objects: Vec<RepoBranchFile>,
+    read_me: Option<String>,
+}
+
 #[get("/by-branch/{repo}/{branch}")]
 pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Responder {
     /* Get a specific repo by branch */
     let repo = &path.0;
     let branch = &path.1;
 
+    // Initiate a mutable variable to store README.md content
+    // as a string if the repo has one else default to None.
+    let mut read_me: Option<String> = None;
+
     let path = format!("/home/git/srv/git/{}.git/", &repo);
     let _ = env::set_current_dir(&path);
     let git_branch_tree = String::from_utf8(Command::new("git").args(["ls-tree", branch]).output().unwrap().stdout).expect("Invalid UTF-8");
-    let output: Vec<RepoBranchFile> = git_branch_tree.lines().map(|x| {
+    let objects: Vec<RepoBranchFile> = git_branch_tree.lines().map(|x| {
         let y = x.split(" ").collect::<Vec<&str>>();
+        let name = y[2].split("\t").collect::<Vec<&str>>()[1].to_string();
+
+        // Checks if the objects name is README.md
+        // and if so updates `read_me` to a string
+        // of the README's content.
+        if &name == "README.md" {
+            let content = String::from_utf8(
+                Command::new("cat").args(["README.md"]).output().unwrap().stdout
+            ).unwrap();
+            read_me = Some(content)
+        };
+
         RepoBranchFile {
-            name: y[2].split("\t").collect::<Vec<&str>>()[1].to_string(),
+            name,
             file_type: y[1].to_string(),
             object_hash: y[2].split("\t").collect::<Vec<&str>>()[0].to_string(),
             last_commit: get_last_commit(match y[1] == "tree" {
@@ -88,7 +111,13 @@ pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Respond
         }
     }).collect::<Vec<RepoBranchFile>>();
 
-    let json = serde_json::to_string(&output).expect("Failed to serialize JSON");
+    // Build a json string of our output struct `Repo`
+    let json = serde_json::to_string(&Repo {
+        objects,
+        read_me,
+    })
+    .expect("Failed to serialize JSON");
+
     HttpResponse::Ok().body(json)
 }
 
