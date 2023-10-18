@@ -178,3 +178,83 @@ pub async fn get_repository_hash(state: Data<AppState>, path: Path<(String, Stri
         HttpResponse::Ok().body(json)
     }
 }
+
+#[derive(Serialize)]
+pub struct Commit {
+    pub hash: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub date: String,
+    pub message: String,
+}
+
+/// Get repo's commit log for a specific branch
+#[get("/commits/{repo}/{branch}")]
+pub async fn get_commit_log(path: Path<(String, String)>) -> impl Responder {
+    let mut commits: Vec<Commit> = Vec::new();
+    let repo = &path.0;
+    let branch = &path.1;
+
+    let path = format!("/home/git/srv/git/{}.git/", &repo);
+    let _ = env::set_current_dir(&path);
+
+    let git_branch_commit_log = String::from_utf8(Command::new("git").args(["log", branch]).output().unwrap().stdout).expect("Invalid UTF-8");
+    let mut lines = git_branch_commit_log.lines();
+
+    let mut hash = String::new();
+    let mut author_name = String::new();
+    let mut author_email = String::new();
+    let mut date = String::new();
+    let mut message = String::new();
+
+    while let Some(line) = lines.next() {
+        if line.starts_with("commit ") {
+            // Save previous commit if exists
+            if !hash.is_empty() {
+                commits.push(Commit {
+                    hash: hash.clone(),
+                    author_name: author_name.clone(),
+                    author_email: author_email.clone(),
+                    date: date.clone(),
+                    message: message.clone(),
+                });
+
+                hash.clear();
+                author_name.clear();
+                author_email.clear();
+                date.clear();
+                message.clear();
+            }
+
+            hash = line[7..].split_whitespace().next().unwrap().to_string();
+        } else if line.starts_with("Author: ") {
+            let author_str = &line[8..];
+            let author_parts: Vec<&str> = author_str.split('<').collect();
+            author_name = author_parts[0].trim().to_string();
+            author_email = author_parts[1].split('>').next().unwrap().to_string();
+        } else if line.starts_with("Date:   ") {
+            date = line[8..].to_string();
+        } else if line.trim().is_empty() {
+            if let Some(message_line) = lines.next() {
+                message = message_line.trim().to_string();
+            }
+        }
+    }
+
+    // Save the last commit
+    if !hash.is_empty() {
+        commits.push(Commit {
+            hash,
+            author_name,
+            author_email,
+            date,
+            message,
+        });
+    }
+
+    // Build a json string of our output struct `Repo`
+    let json = serde_json::to_string(&commits)
+        .expect("Failed to serialize JSON");
+
+    HttpResponse::Ok().body(json)
+}
