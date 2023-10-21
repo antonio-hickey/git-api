@@ -1,28 +1,21 @@
-use crate::structs::LastCommit;
+use crate::structs::Commit;
 use crate::utils::dates::parse_date_to_string;
-use std::process::Command;
 
+fn parse_author(input: &str) -> Option<(String, String)> {
+    // Find the position of the colon and the angle brackets
+    let colon_pos = input.find(": ").unwrap_or(0) + 2;
+    let open_angle = input.find('<').unwrap_or(0);
+    let close_angle = input.find('>').unwrap_or(0);
 
-pub fn get_last_commit(file: Option<&str>) -> LastCommit {
-    let output = match file {
-        Some(file_name) => Command::new("git")
-            .args(["log", "--", file_name])
-            .output()
-            .expect("Failed to execute command"),
-        None => Command::new("git")
-            .arg("log")
-            .output()
-            .expect("Failed to execute command") 
-    };
+    // Slice the string to get the name and email
+    let name = &input[colon_pos..open_angle].trim();
+    let email = &input[(open_angle + 1)..close_angle].trim();
 
-    let git_log_string = String::from_utf8(output.stdout).expect("Failed to parse output as UTF-8");
+    Some((name.to_string(), email.to_string()))
+}
 
-    let last_commit_strings: Vec<&str> = git_log_string
-        .lines()
-        .take(6)
-        .collect::<Vec<&str>>();
-
-    let hash = last_commit_strings[0]
+pub fn parse_commit_log_block(block: Vec<&str>) -> Commit {
+    let hash = block[0]
         .split_whitespace()
         .nth(1)
         .expect("Failed to extract commit hash")
@@ -30,31 +23,25 @@ pub fn get_last_commit(file: Option<&str>) -> LastCommit {
         .take(6)
         .collect::<String>();
 
-    let (date, msg) = if last_commit_strings[2].contains("Date:") {
-        (parse_date_to_string(last_commit_strings[2]
-            .trim_start_matches("Date:")
-            .trim()
-            .to_string()),
-        last_commit_strings[4]
-            .trim_start()
-            .to_string()
+    let (author, author_email) = parse_author(block[1]).expect("failed to parse author");
+
+    let (date, msg) = if block[2].contains("Date:") {
+        (
+            parse_date_to_string(block[2].trim_start_matches("Date:").trim().to_string()),
+            block[4].trim_start().to_string(),
         )
     } else {
-        (parse_date_to_string(last_commit_strings[3]
-            .trim_start_matches("Date:")
-            .trim()
-            .to_string()),
-         last_commit_strings[5]
-            .trim_start()
-            .to_string()
+        (
+            parse_date_to_string(block[3].trim_start_matches("Date:").trim().to_string()),
+            block[5].trim_start().to_string(),
         )
     };
 
-    LastCommit {
+    Commit {
         hash,
         date,
         msg,
+        author,
+        author_email,
     }
 }
-
-

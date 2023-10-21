@@ -6,7 +6,7 @@ use crate::{
 use actix_web::{
     get,
     web::{Data, Path},
-    Responder,
+    HttpResponse, Responder,
 };
 
 /// Endpoint to get all repositories on the server
@@ -61,6 +61,23 @@ pub async fn get_repository_hash(
             };
             successful_response(data)
         }
+        Err(_) => internal_server_error(),
+    }
+}
+
+/// Endpoint to to repositories commit log
+#[get("/commit-log/{repo}/{branch}")]
+pub async fn get_commit_log(
+    _state: Data<AppState>,
+    path: Path<(String, String)>,
+) -> impl Responder {
+    // Consume path into variables
+    let (repo_name, branch) = path.into_inner();
+
+    // Try to get a repo's commit log for a branch
+    // and matching a response based on the result
+    match repo::get_commit_log(&repo_name, &branch).await {
+        Ok(commits) => successful_response(&commits),
         Err(_) => internal_server_error(),
     }
 }

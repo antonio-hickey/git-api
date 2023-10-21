@@ -42,13 +42,18 @@ pub async fn by_hash(repo: &str, hash: &str) -> Result<ObjectContent, Error> {
     let content = run_git_command(&["show", "-p", &hash])?;
     let size = run_git_command(&["cat-file", "-s", &hash])?;
     let name = derive_filename_from_hash(&hash)?;
-    let ext = name
+    let mut ext = name
         .split(".")
         .collect::<Vec<&str>>()
         .last()
         .ok_or(Error::NoLastElement)?
         .trim_end()
         .to_string();
+    ext = if ext == name {
+        String::from("diff")
+    } else {
+        ext
+    };
 
     Ok(ObjectContent {
         name,

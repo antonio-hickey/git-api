@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use serde::Serialize;
+use std::collections::HashMap;
 
 pub struct AppState {
     pub max_payload: i64,
@@ -9,13 +8,15 @@ pub struct AppState {
 }
 
 #[derive(Serialize, Debug)]
-pub struct LastCommit {
+pub struct Commit {
     pub hash: String,
+    pub author: String,
+    pub author_email: String,
     pub date: String,
     pub msg: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Repo {
     pub objects: Vec<RepoBranchFile>,
@@ -28,7 +29,7 @@ pub struct RepoBranchFile {
     pub name: String,
     pub file_type: String,
     pub object_hash: String,
-    pub last_commit: LastCommit,
+    pub last_commit: Commit,
 }
 
 #[derive(Serialize, Debug)]
@@ -36,7 +37,7 @@ pub struct RepoBranchFile {
 pub struct RepoData {
     pub name: String,
     pub description: String,
-    pub last_commit: LastCommit,
+    pub last_commit: Commit,
 }
 
 #[derive(Serialize, Debug)]
