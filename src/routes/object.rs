@@ -1,60 +1,30 @@
-use std::env;
-use std::process::{Command, Stdio};
+use crate::{
+    repository::object,
+    structs::AppState,
+    utils::responses::{internal_server_error, successful_response},
+};
+use actix_web::{get, web, web::Data, Responder};
 
-use actix_web::{web, web::Data, get,  HttpResponse, Responder};
-
-use crate::structs::{AppState, ObjectContent};
-
-
+/// Endpoint to get a objects content
 #[get("/by-hash/{repo}/{hash}")]
-pub async fn get_object_content(state: Data<AppState>, path: web::Path<(String, String)>) -> impl Responder {
-    let repo = &path.0;
-    let hash = &path.1;
-    let hash_cache_key = format!("{}{}", &repo, &hash);
+pub async fn get_object_content(
+    state: Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    // Consume path into variables
+    let (repo_name, hash) = path.into_inner();
 
-    if state.object_hash_cache.contains_key(&hash_cache_key) {
-        let obj_content = state.object_hash_cache.get(&hash_cache_key);
-        let json = serde_json::to_string(&obj_content).expect("Failed to serialize JSON");
-        HttpResponse::Ok().body(json)
-    } else {
-        let repos_path = format!("/home/git/srv/git/{}.git", repo);
-        let _ = env::set_current_dir(&repos_path);
-        let content = String::from_utf8(
-            Command::new("git").args(["show", "-p", &hash]).output().unwrap().stdout
-        ).unwrap();
-        let size = String::from_utf8(
-            Command::new("git").args(["cat-file", "-s", &hash]).output().unwrap().stdout
-        ).unwrap(); 
-        let git_command = Command::new("git")
-            .args(["rev-list", "--objects", "--all"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to execute git rev-list command");
+    // Derive a key for the hash cache and try to fetch content
+    // from cache before trying to process the request
+    let hash_cache_key = format!("{}{}", &repo_name, &hash);
+    if let Some(cached_content) = &state.object_hash_cache.get(&hash_cache_key) {
+        return successful_response(&cached_content);
+    }
 
-        let name = String::from_utf8(Command::new("grep")
-            .arg(&hash)
-            .stdin(git_command.stdout.expect("Failed to retrieve git rev-list output"))
-            .output()
-            .expect("Failed to execute grep command")
-            .stdout
-        )
-        .unwrap()
-        .split(" ")
-        .last()
-        .unwrap()
-        .trim_end()
-        .to_string();
-
-        let ext = name.split(".").collect::<Vec<&str>>().last().unwrap().trim_end().to_string();
-
-        let obj_content = ObjectContent {
-            name,
-            content,
-            size,
-            ext
-        };
-        let json = serde_json::to_string(&obj_content).expect("Failed to serialize JSON");
-        HttpResponse::Ok().body(json)
+    // Try to get an specific objects content in a repo by a given hash
+    // and matching a response based on the result
+    match object::by_hash(&repo_name, &hash).await {
+        Ok(object_content) => successful_response(&object_content),
+        Err(_) => internal_server_error(),
     }
 }
-

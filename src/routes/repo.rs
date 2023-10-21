@@ -1,180 +1,66 @@
-use std::fs;
-use std::env;
-use std::process::{Command, Stdio};
-
-use actix_web::{web::{Data, Path}, get,  HttpResponse, Responder};
-use serde::Serialize;
-
-use crate::structs::{LastCommit, RepoData, AppState};
-use crate::utils::{
-    commits::get_last_commit,
-    dates::parse_string_to_date,
+use crate::{
+    repository::repo,
+    structs::{AppState, Repo},
+    utils::responses::{internal_server_error, successful_response},
+};
+use actix_web::{
+    get,
+    web::{Data, Path},
+    Responder,
 };
 
-
+/// Endpoint to get all repositories on the server
 #[get("/")]
 pub async fn get_repositories() -> impl Responder {
-    /* Get all repos on server */
-    let repos_path = "/home/git/srv/git/";
-    let _ = env::set_current_dir(&repos_path);
-
-    let mut repos: Vec<RepoData> = Vec::new();
-
-    if let Ok(entries) = fs::read_dir(&repos_path) {
-        for entry in entries.filter_map(Result::ok) {
-            env::set_current_dir(entry.path()).unwrap();
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let name = entry.path()
-                    .display()
-                    .to_string()
-                    .replacen(&repos_path, "", 1)
-                    .replacen(".git", "", 1);
-
-                let description = match fs::read_to_string(entry.path().join("description")) {
-                    Ok(contents) => contents.trim().to_string(),
-                    Err(_) => String::new(),
-                };
-
-                let last_commit = get_last_commit(None);
-
-                repos.push(RepoData {
-                    name,
-                    description,
-                    last_commit,
-                });
-            }
-        }
-    } else {
-        eprintln!("Failed to read directory");
+    // Try to get all the repositories on my git server
+    // and match a response based on the result
+    match repo::all().await {
+        Ok(repos) => successful_response(&repos),
+        Err(_) => internal_server_error(),
     }
-
-    repos.sort_by_key(
-        |a| parse_string_to_date(&a.last_commit.date)
-    );
-    repos.reverse();
-
-    let json = serde_json::to_string(&repos).expect("Failed to serialize JSON");
-    HttpResponse::Ok().body(json)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RepoBranchFile {
-    name: String,
-    file_type: String,
-    object_hash: String,
-    last_commit: LastCommit,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Repo {
-    objects: Vec<RepoBranchFile>,
-    read_me: Option<String>,
-}
-
+/* Get a specific repo by branch */
 #[get("/by-branch/{repo}/{branch}")]
 pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Responder {
-    /* Get a specific repo by branch */
-    let repo = &path.0;
-    let branch = &path.1;
+    // Consume path into variables
+    let (repo_name, branch) = path.into_inner();
 
-    // Initiate a mutable variable to store README.md content
-    // as a string if the repo has one else default to None.
-    let mut read_me: Option<String> = None;
-
-    let path = format!("/home/git/srv/git/{}.git/", &repo);
-    let _ = env::set_current_dir(&path);
-    let git_branch_tree = String::from_utf8(Command::new("git").args(["ls-tree", branch]).output().unwrap().stdout).expect("Invalid UTF-8");
-    let objects: Vec<RepoBranchFile> = git_branch_tree.lines().map(|x| {
-        let y = x.split(" ").collect::<Vec<&str>>();
-        let name = y[2].split("\t").collect::<Vec<&str>>()[1].to_string();
-
-        // Checks if the objects name is README.md
-        // and if so updates `read_me` to a string
-        // of the README's content.
-        if name == "README.md" {
-            let branch_filename = format!("{}:README.md", &branch);
-            let content = String::from_utf8(
-                Command::new("git").args(["show", &branch_filename]).output().unwrap().stdout
-            ).unwrap();
-            read_me = Some(content)
-        };
-
-        RepoBranchFile {
-            name,
-            file_type: y[1].to_string(),
-            object_hash: y[2].split("\t").collect::<Vec<&str>>()[0].to_string(),
-            last_commit: get_last_commit(match y[1] == "tree" {
-                true => None,
-                false => Some(y[2].split("\t").collect::<Vec<&str>>()[1]),
-            }),
-        }
-    }).collect::<Vec<RepoBranchFile>>();
-
-    // Build a json string of our output struct `Repo`
-    let json = serde_json::to_string(&Repo {
-        objects,
-        read_me,
-    })
-    .expect("Failed to serialize JSON");
-
-    HttpResponse::Ok().body(json)
+    // Try to get all objects in the repo as well as an optional
+    // readme content string if the project has one and match a
+    // response based on the result
+    match repo::by_branch(&repo_name, &branch).await {
+        Ok((objects, read_me)) => successful_response(&Repo { objects, read_me }),
+        Err(_) => internal_server_error(),
+    }
 }
 
+/// Get a repository by a specific hash
 #[get("/by-hash/{repo}/{hash}")]
-pub async fn get_repository_hash(state: Data<AppState>, path: Path<(String, String)>) -> impl Responder {
-    /* Get a specific repo by hash */
-    let repo = &path.0;
-    let hash = &path.1;
-    let hash_cache_key = format!("{}{}", &repo, &hash);
+pub async fn get_repository_hash(
+    state: Data<AppState>,
+    path: Path<(String, String)>,
+) -> impl Responder {
+    // Extract repo name and hash from url path
+    let (repo_name, hash) = path.into_inner();
 
-    if state.repo_hash_cache.contains_key(&hash_cache_key) {
-        let repo_content = state.repo_hash_cache.get(&hash_cache_key);
-        let json = serde_json::to_string(&repo_content).expect("Failed to serialize to JSON");
-        HttpResponse::Ok().body(json) 
-    } else {
-        let path = format!("/home/git/srv/git/{}.git/", &repo);
-        let _ = env::set_current_dir(&path);
-        let git_command = Command::new("git")
-            .args(["rev-list", "--objects", "--all"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to execute git rev-list command");
+    // Derive a key for the hash cache and try to fetch content
+    // from cache before trying to process the request
+    let hash_cache_key = format!("{}{}", &repo_name, &hash);
+    if let Some(cached_content) = state.repo_hash_cache.get(&hash_cache_key) {
+        return successful_response(&cached_content);
+    }
 
-        let parent = String::from_utf8(Command::new("grep")
-            .arg(&hash)
-            .stdin(git_command.stdout.expect("Failed to retrieve git rev-list output"))
-            .output()
-            .expect("Failed to execute grep command")
-            .stdout
-        )
-        .unwrap()
-        .split(" ")
-        .last()
-        .unwrap()
-        .trim_end()
-        .to_string();
-
-        let git_branch_tree = String::from_utf8(Command::new("git").args(["ls-tree", hash]).output().unwrap().stdout).expect("Invalid UTF-8");
-        let output: Vec<RepoBranchFile> = git_branch_tree.lines().map(|x| {
-            let y = x.split(" ").collect::<Vec<&str>>();
-            let z = format!("{}/{}", parent, y[2].split("\t").collect::<Vec<&str>>()[1]);
-            RepoBranchFile {
-                name: y[2].split("\t").collect::<Vec<&str>>()[1].to_string(),
-                file_type: y[1].to_string(),
-                object_hash: y[2].split("\t").collect::<Vec<&str>>()[0].to_string(),
-                last_commit: get_last_commit(match y[1] == "tree" {
-                    true => None,
-                    false => Some(&z),
-                }),
-            }
-        }).collect::<Vec<RepoBranchFile>>();
-
-        let json = serde_json::to_string(&Repo {
-            objects: output,
-            read_me: None,
-        }).expect("Failed to serialize JSON");
-        HttpResponse::Ok().body(json)
+    // Try to get all the objects in the repository by
+    // the hash and match a response to the result
+    match repo::by_hash(&repo_name, &hash).await {
+        Ok(objects) => {
+            let data = &Repo {
+                objects,
+                read_me: None,
+            };
+            successful_response(data)
+        }
+        Err(_) => internal_server_error(),
     }
 }

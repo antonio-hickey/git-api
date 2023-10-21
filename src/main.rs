@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-use actix_web::{web, http, App, HttpServer};
-use actix_cors::Cors;
-
+mod error;
+mod repository;
 mod routes;
-mod utils;
 mod structs;
+mod utils;
 
-use structs::{AppState, Users};
-
+use actix_cors::Cors;
+use actix_web::{http, web, App, HttpServer};
+use std::collections::HashMap;
+use structs::AppState;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -16,17 +16,15 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     let app_state = web::Data::new(AppState {
-        users: Users::default(),
         max_payload: 262_144,
         object_hash_cache: HashMap::new(),
         repo_hash_cache: HashMap::new(),
     });
 
     HttpServer::new(move || {
-        let cors_config = Cors::default() 
+        let cors_config = Cors::default()
             .allow_any_origin()
             .allowed_methods(vec!["GET", "POST"])
-            .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
             .allowed_header(http::header::CONTENT_TYPE)
             .max_age(3600);
 
