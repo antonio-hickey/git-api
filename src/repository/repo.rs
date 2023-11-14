@@ -38,7 +38,7 @@ pub async fn all() -> Result<Vec<RepoData>, Error> {
                 };
 
                 // Get a last commit
-                let commit_log = run_git_command(&["log", "--no-merges"]).unwrap();
+                let commit_log = run_git_command(&["log", "--no-merges"], false).unwrap();
                 let last_commit_block: Vec<&str> = commit_log.lines().take(6).collect();
                 let last_commit = parse_commit_log_block(last_commit_block);
 
@@ -86,7 +86,7 @@ pub async fn by_hash(repo: &str, hash: &str) -> Result<Vec<RepoBranchFile>, Erro
     .trim_end()
     .to_string();
 
-    Ok(run_git_command(&["ls-tree", hash])?
+    Ok(run_git_command(&["ls-tree", hash], false)?
         .lines()
         .map(|x| {
             let y = x.split(" ").collect::<Vec<&str>>();
@@ -94,8 +94,8 @@ pub async fn by_hash(repo: &str, hash: &str) -> Result<Vec<RepoBranchFile>, Erro
 
             // Get a last commit
             let commit_log = match y[1].eq("tree") {
-                true => run_git_command(&["log", "--no-merges"]).unwrap(),
-                false => run_git_command(&["log", "--no-merges", "--", &z]).unwrap(),
+                true => run_git_command(&["log", "--no-merges"], false).unwrap(),
+                false => run_git_command(&["log", "--no-merges", "--", &z], false).unwrap(),
             };
             let last_commit_block: Vec<&str> = commit_log.lines().take(6).collect();
             let last_commit = parse_commit_log_block(last_commit_block);
@@ -122,7 +122,7 @@ pub async fn by_branch(
     change_directory(&path)?;
 
     Ok((
-        run_git_command(&["ls-tree", branch])?
+        run_git_command(&["ls-tree", branch], false)?
             .lines()
             .map(|x| {
                 let y = x.split(" ").collect::<Vec<&str>>();
@@ -133,14 +133,14 @@ pub async fn by_branch(
                 // of the README's content.
                 if name == "README.md" {
                     let branch_filename = format!("{}:README.md", &branch);
-                    let content = run_git_command(&["show", &branch_filename]).unwrap();
+                    let content = run_git_command(&["show", &branch_filename], false).unwrap();
                     read_me = Some(content)
                 };
 
                 // Get a last commit
                 let commit_log = match y[1].eq("tree") {
-                    true => run_git_command(&["log", "--no-merges"]).unwrap(),
-                    false => run_git_command(&["log", "--no-merges", "--", &name]).unwrap(),
+                    true => run_git_command(&["log", "--no-merges"], false).unwrap(),
+                    false => run_git_command(&["log", "--no-merges", "--", &name], false).unwrap(),
                 };
                 let last_commit_block: Vec<&str> = commit_log.lines().take(6).collect();
                 let last_commit = parse_commit_log_block(last_commit_block);
@@ -162,7 +162,7 @@ pub async fn get_commit_log(repo: &str, branch: &str) -> Result<Vec<Commit>, Err
     let path = format!("/home/git/srv/git/{}.git/", &repo);
     change_directory(&path)?;
 
-    let raw_commit_log = run_git_command(&["log", "--no-merges", branch])?;
+    let raw_commit_log = run_git_command(&["log", "--no-merges", branch], false)?;
     let mut commit_log_lines = raw_commit_log.lines();
 
     let mut commits: Vec<Commit> = Vec::new();

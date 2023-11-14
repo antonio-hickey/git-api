@@ -39,9 +39,6 @@ pub async fn by_hash(repo: &str, hash: &str) -> Result<ObjectContent, Error> {
     let repos_path = format!("/home/git/srv/git/{}.git", repo);
     change_directory(&repos_path)?;
 
-    // Collect the objects data
-    let mut content = run_git_command(&["show", "-p", &hash])?;
-    let size = run_git_command(&["cat-file", "-s", &hash])?;
     let name = derive_filename_from_hash(&hash)?;
     let mut ext = name
         .split(".")
@@ -60,10 +57,14 @@ pub async fn by_hash(repo: &str, hash: &str) -> Result<ObjectContent, Error> {
     // it's an image extension than convert the content
     // to bytes and then base64 encode the bytes.
     let image_exts = vec!["png", "jpg", "jpeg"];
-    if image_exts.contains(&ext.as_str()) {
-        let image_bytes = content.as_bytes();
-        content = general_purpose::STANDARD_NO_PAD.encode(image_bytes);
-    }
+    let content = if image_exts.contains(&ext.as_str()) {
+        run_git_command(&["show", "-p", &hash], true)?
+    } else {
+        run_git_command(&["show", "-p", &hash], false)?
+    };
+
+    // Collect the objects data
+    let size = run_git_command(&["cat-file", "-s", &hash], false)?;
 
     Ok(ObjectContent {
         name,
