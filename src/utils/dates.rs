@@ -1,15 +1,16 @@
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 
-pub fn parse_date_to_string(date: String) ->String {
-    let x = DateTime::parse_from_str(&date, 
-        "%a %b %e %H:%M:%S %Y %z"
-    ).expect("Failed to parse datetime");
-    let y: DateTime<FixedOffset> = DateTime::from(x);
+/// Parse a date string into my desired date format (mm/dd/yyyy HH:MM)
+pub fn parse_date_to_string(date: String) -> String {
+    let datetime = DateTime::parse_from_str(&date, "%a %b %e %H:%M:%S %Y %z")
+        .expect("Failed to parse datetime");
+    let fixed_datetime: DateTime<FixedOffset> = DateTime::from(datetime);
 
-    y.format("%m/%d/%Y %H:%M").to_string()
+    fixed_datetime.format("%m/%d/%Y %H:%M").to_string()
 }
 
-pub fn parse_string_to_date(date: &str) ->DateTime<Utc> {
+/// Parse a string into a `DateTime<Utc>`
+pub fn parse_string_to_date(date: &str) -> DateTime<Utc> {
     let format = "%m/%d/%Y %H:%M";
 
     Utc.datetime_from_str(date, format).unwrap()

@@ -1,6 +1,6 @@
 use crate::{
-    repository::object,
-    structs::AppState,
+    application::AppState,
+    repository::object::Object,
     utils::responses::{internal_server_error, successful_response},
 };
 use actix_web::{get, web, web::Data, Responder};
@@ -23,7 +23,7 @@ pub async fn get_object_content(
 
     // Try to get an specific objects content in a repo by a given hash
     // and matching a response based on the result
-    match object::by_hash(&repo_name, &hash).await {
+    match Object::by_hash(&repo_name, &hash).await {
         Ok(object_content) => successful_response(&object_content),
         Err(_) => internal_server_error(),
     }

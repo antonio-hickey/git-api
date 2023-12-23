@@ -1,12 +1,12 @@
 use crate::{
-    repository::repo,
-    structs::{AppState, Repo},
+    application::AppState,
+    repository::repo::Repo,
     utils::responses::{internal_server_error, successful_response},
 };
 use actix_web::{
     get,
     web::{Data, Path},
-    HttpResponse, Responder,
+    Responder,
 };
 
 /// Endpoint to get all repositories on the server
@@ -14,13 +14,16 @@ use actix_web::{
 pub async fn get_repositories() -> impl Responder {
     // Try to get all the repositories on my git server
     // and match a response based on the result
-    match repo::all().await {
+    match Repo::get_all().await {
         Ok(repos) => successful_response(&repos),
-        Err(_) => internal_server_error(),
+        Err(e) => {
+            eprintln!("{e:?}");
+            internal_server_error()
+        }
     }
 }
 
-/* Get a specific repo by branch */
+/// Endpoint to get a specific repository at a specific branch
 #[get("/by-branch/{repo}/{branch}")]
 pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Responder {
     // Consume path into variables
@@ -29,13 +32,13 @@ pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Respond
     // Try to get all objects in the repo as well as an optional
     // readme content string if the project has one and match a
     // response based on the result
-    match repo::by_branch(&repo_name, &branch).await {
-        Ok((objects, read_me)) => successful_response(&Repo { objects, read_me }),
+    match Repo::by_branch(&repo_name, &branch).await {
+        Ok(repo) => successful_response(&repo),
         Err(_) => internal_server_error(),
     }
 }
 
-/// Get a repository by a specific hash
+/// Endpoint to get a repository by a specific hash
 #[get("/by-hash/{repo}/{hash}")]
 pub async fn get_repository_hash(
     state: Data<AppState>,
@@ -53,19 +56,16 @@ pub async fn get_repository_hash(
 
     // Try to get all the objects in the repository by
     // the hash and match a response to the result
-    match repo::by_hash(&repo_name, &hash).await {
-        Ok(objects) => {
-            let data = &Repo {
-                objects,
-                read_me: None,
-            };
-            successful_response(data)
+    match Repo::by_hash(&repo_name, &hash).await {
+        Ok(repo) => successful_response(&repo),
+        Err(e) => {
+            eprintln!("{e:?}");
+            internal_server_error()
         }
-        Err(_) => internal_server_error(),
     }
 }
 
-/// Endpoint to to repositories commit log
+/// Endpoint to get a repository's commit log
 #[get("/commit-log/{repo}/{branch}")]
 pub async fn get_commit_log(
     _state: Data<AppState>,
@@ -76,7 +76,7 @@ pub async fn get_commit_log(
 
     // Try to get a repo's commit log for a branch
     // and matching a response based on the result
-    match repo::get_commit_log(&repo_name, &branch).await {
+    match Repo::get_commit_log(&repo_name, &branch).await {
         Ok(commits) => successful_response(&commits),
         Err(_) => internal_server_error(),
     }
