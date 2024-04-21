@@ -1,8 +1,8 @@
 use crate::repository::{object::Object, repo::RepoBranchFile};
 use std::{collections::HashMap, fmt};
 
-/// The filesystem path where ALL repositories live
-pub const REPOS_PATH: &str = "/home/git/srv/git/";
+/// The filesystem path where public repositories live
+pub const REPOS_PATH: &str = "/home/git/repos/public/";
 
 /// A model for the applications state
 pub struct AppState {

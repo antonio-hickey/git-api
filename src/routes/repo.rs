@@ -10,7 +10,7 @@ use actix_web::{
 };
 
 /// Endpoint to get all repositories on the server
-#[get("/")]
+#[get("/all")]
 pub async fn get_repositories() -> impl Responder {
     // Try to get all the repositories on my git server
     // and match a response based on the result
@@ -34,7 +34,10 @@ pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Respond
     // response based on the result
     match Repo::by_branch(&repo_name, &branch).await {
         Ok(repo) => successful_response(&repo),
-        Err(_) => internal_server_error(),
+        Err(e) => {
+            eprintln!("{e:?}");
+            internal_server_error()
+        }
     }
 }
 
@@ -78,6 +81,9 @@ pub async fn get_commit_log(
     // and matching a response based on the result
     match Repo::get_commit_log(&repo_name, &branch).await {
         Ok(commits) => successful_response(&commits),
-        Err(_) => internal_server_error(),
+        Err(e) => {
+            eprintln!("{e:?}");
+            internal_server_error()
+        }
     }
 }

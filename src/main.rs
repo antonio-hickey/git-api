@@ -34,7 +34,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors_config)
             .configure(routes::config::configure_routes)
     })
-    .bind(("0.0.0.0", 8080))?
+    .bind(("0.0.0.0", 6969))?
     .run()
     .await
 }
