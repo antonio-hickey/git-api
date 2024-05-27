@@ -10,20 +10,27 @@ pub fn run_git_command(args: &[&str], is_binary: bool) -> Result<String, GitApiE
     // Run the command and store the output
     let output = Command::new("git")
         .args(args)
-        .output()
-        .map_err(|_| GitApiError::CommandFailed)?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?
+        .wait_with_output()?;
 
-    if is_binary {
-        // Encode the binary output into base 64 bytes
-        Ok(general_purpose::STANDARD_NO_PAD.encode(output.stdout))
+    if output.status.success() {
+        if is_binary {
+            // Encode the binary output into base-64 bytes
+            Ok(general_purpose::STANDARD_NO_PAD.encode(output.stdout))
+        } else {
+            Ok(String::from_utf8(output.stdout)?)
+        }
     } else {
-        String::from_utf8(output.stdout).map_err(|_| GitApiError::InvalidUtf8)
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(GitApiError::CommandFailed)
     }
 }
 
 /// Try to change the current directory
 pub fn change_directory(path: &str) -> Result<(), GitApiError> {
-    env::set_current_dir(path).map_err(|_| GitApiError::DirectoryChangeError)
+    Ok(env::set_current_dir(path)?)
 }
 
 /// Try to derive a filename from a hash.
@@ -31,27 +38,32 @@ pub fn change_directory(path: &str) -> Result<(), GitApiError> {
 /// Runs a git command to get a reversed git list, piped into a
 /// grep command to find objects/files that match the given hash.
 pub fn get_filename_from_hash(hash: &str) -> Result<String, GitApiError> {
-    let git_command = Command::new("git")
+    let mut git_command = Command::new("git")
         .args(["rev-list", "--objects", "--all"])
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to execute git rev-list command");
+        .spawn()?;
 
-    Ok(String::from_utf8(
-        Command::new("grep")
-            .arg(&hash)
-            .stdin(
-                git_command
-                    .stdout
-                    .expect("Failed to retrieve git rev-list output"),
-            )
-            .output()
-            .expect("Failed to execute grep command")
-            .stdout,
-    )?
-    .split(" ")
-    .last()
-    .ok_or(GitApiError::NoLastElement)?
-    .trim_end()
-    .to_string())
+    let mut grep_command = Command::new("grep")
+        .arg(hash)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    if let Some(ref mut git_stdout) = git_command.stdout {
+        if let Some(ref mut grep_stdin) = grep_command.stdin {
+            std::io::copy(git_stdout, grep_stdin)?;
+        }
+    }
+
+    let grep_output = grep_command.wait_with_output()?;
+
+    git_command.wait()?;
+
+    let grep_output_str = String::from_utf8(grep_output.stdout)?;
+
+    grep_output_str
+        .split_whitespace()
+        .last()
+        .map(|s| s.to_string())
+        .ok_or(GitApiError::NoLastElement)
 }
