@@ -1,7 +1,7 @@
 use crate::utils::dates::parse_date_to_string;
 use serde::Serialize;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 /// A model representing a commit in a repository
 pub struct Commit {
     pub hash: String,

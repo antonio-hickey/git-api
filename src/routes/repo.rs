@@ -11,11 +11,25 @@ use actix_web::{
 
 /// Endpoint to get all repositories on the server
 #[get("/all")]
-pub async fn get_repositories() -> impl Responder {
+pub async fn get_repositories(state: Data<AppState>) -> impl Responder {
+    let mut repos_cache = state.repos_cache.lock().await;
+
+    // Check if repos cache is not empty that way
+    // it can just respond with that instead of having
+    // to fetch all the repos for every request.
+    if !repos_cache.is_empty() {
+        return successful_response(&*repos_cache);
+    }
+
     // Try to get all the repositories on my git server
     // and match a response based on the result
     match Repo::get_all().await {
-        Ok(repos) => successful_response(&repos),
+        Ok(repos) => {
+            // Update cache of repo's
+            *repos_cache = repos.clone();
+
+            successful_response(&repos)
+        }
         Err(e) => {
             eprintln!("{e:?}");
             internal_server_error()

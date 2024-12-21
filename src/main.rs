@@ -7,6 +7,8 @@ use actix_cors::Cors;
 use actix_web::{http, web, App, HttpServer};
 use application::AppState;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -19,6 +21,7 @@ async fn main() -> std::io::Result<()> {
         max_payload: 262_144,
         object_hash_cache: HashMap::new(),
         repo_hash_cache: HashMap::new(),
+        repos_cache: Arc::new(Mutex::new(Vec::new())),
     });
 
     // Run the http server

@@ -227,7 +227,7 @@ impl Repo {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 /// A model representing "metadata" for a repo
 pub struct RepoData {

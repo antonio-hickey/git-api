@@ -1,5 +1,10 @@
-use crate::repository::{object::Object, repo::RepoBranchFile};
+use crate::repository::{
+    object::Object,
+    repo::{RepoBranchFile, RepoData},
+};
+use std::sync::Arc;
 use std::{collections::HashMap, fmt};
+use tokio::sync::Mutex;
 
 /// The filesystem path where public repositories live
 pub const REPOS_PATH: &str = "/home/git/repos/public/";
@@ -12,6 +17,8 @@ pub struct AppState {
     pub object_hash_cache: HashMap<String, Object>,
     /// The `Repo` cache which is accessable using a hash key
     pub repo_hash_cache: HashMap<String, Vec<RepoBranchFile>>,
+    /// A cache of the `RepoData` (name, description, and last commit)
+    pub repos_cache: Arc<Mutex<Vec<RepoData>>>,
 }
 
 #[derive(Debug)]
