@@ -27,17 +27,16 @@ impl Repo {
 
         // Read all the files in the directory and map them into
         // repository data (`RepoData`)
-        let repos = fs::read_dir(REPOS_PATH).map(|files_in_dir| {
-            let mut repos_in_dir = Self::into_repos_in_dir(files_in_dir);
+        fs::read_dir(REPOS_PATH).map(|files_in_dir| -> Result<Vec<RepoData>, GitApiError> {
+            let mut repos_in_dir = Self::into_repos_in_dir(files_in_dir)?;
 
             // Sort the repositories by date and reverse the order
             // (most recent, ..., oldest)
             repos_in_dir.sort_by_key(|a| parse_string_to_date(&a.last_commit.date));
             repos_in_dir.reverse();
-            repos_in_dir
-        })?;
 
-        Ok(repos)
+            Ok(repos_in_dir)
+        })?
     }
 
     /// Get a repo at a specified state using a given repo name and hash
@@ -125,74 +124,79 @@ impl Repo {
     pub async fn get_commit_log(repo: &str, branch: &str) -> Result<Vec<Commit>, GitApiError> {
         // Start by navigating to the repository's directory
         let path = format!("{}{}.git/", REPOS_PATH, &repo);
-        change_directory(&path)?;
 
         // Get all the commit history using the "git log --no-merges {BRANCH}" command
         // and parsing out commits from the output of the command
-        let commits: Vec<Commit> = run_git_command(&["log", "--no-merges", branch], false)?
-            .lines()
-            .collect::<Vec<&str>>()
-            .chunks(6)
-            .filter_map(|commit_chunk| {
-                if commit_chunk.is_empty() {
-                    None
-                } else {
-                    Some(Commit::from_commit_block(commit_chunk.to_vec()))
-                }
-            })
+        let log_output = run_git_command(
+            &[
+                "-C",
+                &path,
+                "log",
+                "--no-merges",
+                branch,
+                "--date=iso-strict",
+                "--pretty=format:%x1e%H%x1f%an%x1f%ae%x1f%ad%x1f%P%x1f%B",
+            ],
+            false,
+        )?;
+
+        let commits: Vec<Commit> = log_output
+            .split('\x1e')
+            .filter(|part| !part.trim().is_empty())
+            .map(Commit::from)
             .collect();
 
         Ok(commits)
     }
 
-    /// Converts files in a directory (`ReadDir`) into repositories (`Vec<RepoData>`)
-    fn into_repos_in_dir(files_in_dir: ReadDir) -> Vec<RepoData> {
+    /// Converts files in a directory [`ReadDir`] into a result of repositories [`RepoData`].
+    fn into_repos_in_dir(files_in_dir: ReadDir) -> Result<Vec<RepoData>, GitApiError> {
         // filter out any files that got an error trying to read and map the ok ones
         // into repository data `RepoData`
         files_in_dir
-            .filter_map(|file_in_dir| {
-                // Convert file in directory into repo data
-                if let Ok(file_in_dir) = file_in_dir {
-                    change_directory(file_in_dir.path().to_str().expect("some path string"))
-                        .unwrap();
+            .filter_map(Result::ok)
+            .filter(|f| f.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+            .map(|entry| {
+                let repo_path = entry.path();
+                let name = repo_path
+                    .strip_prefix(REPOS_PATH)
+                    .unwrap_or(repo_path.as_path())
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_owned();
 
-                    // Only if file in directory is a directory holding other
-                    // files itself as a repository will ALWAYS be a directory
-                    if file_in_dir
-                        .file_type()
-                        .map(|file_type| file_type.is_dir())
-                        .unwrap_or(false)
-                    {
-                        // Get the name of the repository from file path
-                        // and then replace the REPOS_PATH and ".git"
-                        // leaving only the project name
-                        let name = file_in_dir
-                            .path()
-                            .display()
-                            .to_string()
-                            .replacen(REPOS_PATH, "", 1)
-                            .replacen(".git", "", 1);
+                let description =
+                    fs::read_to_string(repo_path.join("description")).unwrap_or_default();
+                let repo_path_str = repo_path.to_string_lossy();
 
-                        // Get the description of the repository
-                        let description =
-                            fs::read_to_string(file_in_dir.path().join("description"))
-                                .unwrap_or(String::new());
+                let log_output = run_git_command(
+                    &[
+                        "-C",
+                        &repo_path_str,
+                        "log",
+                        "--no-merges",
+                        "master",
+                        "--date=iso-strict",
+                        "--pretty=format:%x1e%H%x1f%an%x1f%ae%x1f%ad%x1f%P%x1f%B",
+                    ],
+                    false,
+                )?;
+                let last_commit = log_output
+                    .split('\x1e')
+                    .find(|rec| !rec.trim().is_empty())
+                    .map(Commit::from)
+                    .ok_or(GitApiError::RepoWithNoCommits(
+                        repo_path.to_str().unwrap_or("<repo>").to_owned(),
+                    ))?;
 
-                        // Get the last commit to the repository
-                        let commit_log = run_git_command(&["log", "--no-merges"], false).unwrap();
-                        let last_commit_block: Vec<&str> = commit_log.lines().take(6).collect();
-                        let last_commit = Commit::from_commit_block(last_commit_block);
-
-                        return Some(RepoData {
-                            name,
-                            description,
-                            last_commit,
-                        });
-                    }
-                }
-                None
+                Ok(RepoData {
+                    name,
+                    description,
+                    last_commit,
+                })
             })
-            .collect::<Vec<RepoData>>()
+            .collect::<Result<Vec<_>, GitApiError>>()
     }
 
     /// Try to parse a unparsed object string into a `RepoBranchFile`
@@ -214,9 +218,22 @@ impl Repo {
         let file_type = object_data[1].to_string();
 
         // Parse out the last commit from the commit log of the object
-        let commit_log = run_git_command(&["log", "--no-merges", "--", &name], false)?;
-        let last_commit_block: Vec<&str> = commit_log.lines().take(6).collect();
-        let last_commit = Commit::from_commit_block(last_commit_block);
+        let log_output = run_git_command(
+            &[
+                "log",
+                "--no-merges",
+                "--date=iso-strict",
+                "--pretty=format:%x1e%H%x1f%an%x1f%ae%x1f%ad%x1f%P%x1f%B",
+                "--",
+                &name,
+            ],
+            false,
+        )?;
+        let last_commit = log_output
+            .split('\x1e')
+            .find(|rec| !rec.trim().is_empty())
+            .map(Commit::from)
+            .ok_or(GitApiError::RepoWithNoCommits(name.to_owned()))?;
 
         Ok(RepoBranchFile {
             name: hash_and_name[1].to_string(),

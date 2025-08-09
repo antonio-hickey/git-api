@@ -36,12 +36,19 @@ pub enum GitApiError {
     StdIoError(std::io::Error),
     /// GitApiError for std::string::FromUtf8Error
     FromUtf8(std::string::FromUtf8Error),
+
+    /// Encountered a repository with no commits.
+    RepoWithNoCommits(String),
 }
 // Implement display trait for RevereGitApiError
 impl fmt::Display for GitApiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO: Think of more meaningful display messages
-        write!(f, "error")
+        match self {
+            GitApiError::RepoWithNoCommits(s) => write!(f, "Uh oh, repo with no commits: {s}"),
+
+            // TODO: Think of more meaningful display messages
+            _ => write!(f, "error"),
+        }
     }
 }
 impl From<std::io::Error> for GitApiError {
