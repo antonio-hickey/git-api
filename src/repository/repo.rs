@@ -4,6 +4,7 @@ use crate::{
         commands::{change_directory, get_filename_from_hash, run_git_command},
         commits::Commit,
         dates::parse_string_to_date,
+        validation::validate_repo_path,
     },
 };
 use serde::Serialize;
@@ -44,9 +45,12 @@ impl Repo {
     /// Called when a user clicks a directory in a repo branch, so it's meant
     /// to basically treat directories in a repository as sub repositories.
     pub async fn by_hash(repo: &str, hash: &str) -> Result<Repo, GitApiError> {
-        // Start by navigating to the repository directory
-        let repo_path = format!("{}{}.git/", REPOS_PATH, &repo);
-        change_directory(&repo_path)?;
+        // Validate and construct safe repository path
+        let repo_path = validate_repo_path(REPOS_PATH, repo)?;
+        let repo_path_str = repo_path
+            .to_str()
+            .ok_or(GitApiError::InvalidInput("Invalid path encoding".into()))?;
+        change_directory(repo_path_str)?;
 
         let parent_path = get_filename_from_hash(hash)?;
 
@@ -76,9 +80,11 @@ impl Repo {
     /// Called when a user clicks a repo from the list of repos on /git/ which default
     /// to the master branch for now, but looking to add UI for branch selection soon.
     pub async fn by_branch(repo: &str, branch: &str) -> Result<Repo, GitApiError> {
-        // Start by navigating to the repository's directory
-        let path = format!("{}{}.git/", REPOS_PATH, &repo);
-        change_directory(&path)?;
+        // Validate and construct safe repository path
+        let repo_path = validate_repo_path(REPOS_PATH, repo)?;
+        change_directory(repo_path.to_str().ok_or(GitApiError::InvalidInput(
+            "Invalid path encoding".to_string(),
+        ))?)?;
 
         // Initiate a mutable variable to store README.md content
         // as a string if the repo has one else default to None.
@@ -122,15 +128,18 @@ impl Repo {
     /// the branch is hard coded to master for now, but looking to build
     /// UI for the user to select different branches soon.
     pub async fn get_commit_log(repo: &str, branch: &str) -> Result<Vec<Commit>, GitApiError> {
-        // Start by navigating to the repository's directory
-        let path = format!("{}{}.git/", REPOS_PATH, &repo);
+        // Validate and construct safe repository path
+        let repo_path = validate_repo_path(REPOS_PATH, repo)?;
+        let path = repo_path.to_str().ok_or(GitApiError::InvalidInput(
+            "Invalid path encoding".to_string(),
+        ))?;
 
         // Get all the commit history using the "git log --no-merges {BRANCH}" command
         // and parsing out commits from the output of the command
         let log_output = run_git_command(
             &[
                 "-C",
-                &path,
+                path,
                 "log",
                 "--no-merges",
                 branch,

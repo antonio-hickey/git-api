@@ -1,7 +1,10 @@
 use crate::{
     application::AppState,
     repository::repo::Repo,
-    utils::responses::{internal_server_error, successful_response},
+    utils::{
+        responses::{internal_server_error, successful_response},
+        validation::{validate_branch_name, validate_hash, validate_repo_name},
+    },
 };
 use actix_web::{
     get,
@@ -43,10 +46,26 @@ pub async fn get_repository_branch(path: Path<(String, String)>) -> impl Respond
     // Consume path into variables
     let (repo_name, branch) = path.into_inner();
 
+    // Validate user inputs
+    let repo_name = match validate_repo_name(&repo_name) {
+        Ok(name) => name,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+    let branch = match validate_branch_name(&branch) {
+        Ok(branch) => branch,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+
     // Try to get all objects in the repo as well as an optional
     // readme content string if the project has one and match a
     // response based on the result
-    match Repo::by_branch(&repo_name, &branch).await {
+    match Repo::by_branch(repo_name, branch).await {
         Ok(repo) => successful_response(&repo),
         Err(e) => {
             eprintln!("{e:?}");
@@ -64,16 +83,32 @@ pub async fn get_repository_hash(
     // Extract repo name and hash from url path
     let (repo_name, hash) = path.into_inner();
 
+    // Validate inputs
+    let repo_name = match validate_repo_name(&repo_name) {
+        Ok(name) => name,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+    let hash = match validate_hash(&hash) {
+        Ok(hash) => hash,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+
     // Derive a key for the hash cache and try to fetch content
     // from cache before trying to process the request
-    let hash_cache_key = format!("{}{}", &repo_name, &hash);
+    let hash_cache_key = format!("{}{}", repo_name, hash);
     if let Some(cached_content) = state.repo_hash_cache.get(&hash_cache_key) {
         return successful_response(&cached_content);
     }
 
     // Try to get all the objects in the repository by
     // the hash and match a response to the result
-    match Repo::by_hash(&repo_name, &hash).await {
+    match Repo::by_hash(repo_name, hash).await {
         Ok(repo) => successful_response(&repo),
         Err(e) => {
             eprintln!("{e:?}");
@@ -91,9 +126,25 @@ pub async fn get_commit_log(
     // Consume path into variables
     let (repo_name, branch) = path.into_inner();
 
+    // Validate user inputs
+    let repo_name = match validate_repo_name(&repo_name) {
+        Ok(name) => name,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+    let branch = match validate_branch_name(&branch) {
+        Ok(branch) => branch,
+        Err(e) => {
+            eprintln!("Validation error: {e:?}");
+            return internal_server_error();
+        }
+    };
+
     // Try to get a repo's commit log for a branch
     // and matching a response based on the result
-    match Repo::get_commit_log(&repo_name, &branch).await {
+    match Repo::get_commit_log(repo_name, branch).await {
         Ok(commits) => successful_response(&commits),
         Err(e) => {
             eprintln!("{e:?}");

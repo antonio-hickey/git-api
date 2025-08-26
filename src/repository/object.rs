@@ -1,6 +1,9 @@
 use crate::{
     application::{GitApiError, REPOS_PATH},
-    utils::commands::{change_directory, get_filename_from_hash, run_git_command},
+    utils::{
+        commands::{change_directory, get_filename_from_hash, run_git_command},
+        validation::validate_repo_path,
+    },
 };
 use serde::Serialize;
 
@@ -16,9 +19,12 @@ pub struct Object {
 impl Object {
     /// Try to get a specific objects content in a repo by a given hash
     pub async fn by_hash(repo: &str, hash: &str) -> Result<Object, GitApiError> {
-        // Start at the filesystem's path for the given repository
-        let repos_path = format!("{}{}.git", REPOS_PATH, repo);
-        change_directory(&repos_path)?;
+        // Validate and construct safe repository path
+        let repo_path = validate_repo_path(REPOS_PATH, repo)?;
+        let repo_path_str = repo_path.to_str().ok_or(GitApiError::InvalidInput(
+            "Repository path is of invalid encoding".into(),
+        ))?;
+        change_directory(repo_path_str)?;
 
         // Parse out the filename and extension
         let name = get_filename_from_hash(hash)?;

@@ -26,25 +26,34 @@ pub struct AppState {
 pub enum GitApiError {
     /// GitApiError when last() is None
     NoLastElement,
+
     /// GitApiError involving a failed process command
     CommandFailed,
+
     /// GitApiError involving a failed cwd change
     DirectoryChangeError,
+
     /// GitApiError involving invalid UTF-8
     InvalidUtf8,
+
     /// GitApiError -> std::io::Error
     StdIoError(std::io::Error),
+
     /// GitApiError for std::string::FromUtf8Error
     FromUtf8(std::string::FromUtf8Error),
 
     /// Encountered a repository with no commits.
     RepoWithNoCommits(String),
+
+    /// Invalid user input.
+    InvalidInput(String),
 }
 // Implement display trait for RevereGitApiError
 impl fmt::Display for GitApiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GitApiError::RepoWithNoCommits(s) => write!(f, "Uh oh, repo with no commits: {s}"),
+            GitApiError::InvalidInput(s) => write!(f, "Invalid input: {s}"),
 
             // TODO: Think of more meaningful display messages
             _ => write!(f, "error"),
